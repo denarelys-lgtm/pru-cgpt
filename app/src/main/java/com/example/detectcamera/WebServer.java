@@ -68,7 +68,6 @@ public class WebServer extends NanoHTTPD {
 
         String uri = session.getUri();
 
-        // Control API para Encender/Apagar/Cambiar Cámara
         if ("/api/camera".equals(uri)) {
             String action = session.getParms().get("action");
             if (cameraService != null) {
@@ -83,19 +82,17 @@ public class WebServer extends NanoHTTPD {
             return newFixedLengthResponse(Response.Status.OK, "application/json", "{\"status\":\"ok\"}");
         }
 
-        // Stream de la Pantalla
-        if ("/frame.jpg".equals(uri)) {
+        if ("/frame.png".equals(uri) || "/frame.jpg".equals(uri)) {
             byte[] frame;
             synchronized (this) {
                 frame = ultimoFramePantalla;
             }
             if (frame != null && frame.length > 0) {
-                return newFixedLengthResponse(Response.Status.OK, "image/jpeg", new ByteArrayInputStream(frame), frame.length);
+                return newFixedLengthResponse(Response.Status.OK, "image/png", new ByteArrayInputStream(frame), frame.length);
             }
-            return newFixedLengthResponse(Response.Status.NO_CONTENT, "image/jpeg", "");
+            return newFixedLengthResponse(Response.Status.NO_CONTENT, "image/png", "");
         }
 
-        // Stream de la Cámara
         if ("/camera_frame.jpg".equals(uri)) {
             byte[] frame;
             synchronized (this) {
@@ -107,7 +104,6 @@ public class WebServer extends NanoHTTPD {
             return newFixedLengthResponse(Response.Status.NO_CONTENT, "image/jpeg", "");
         }
 
-        // Panel Dashboard Principal
         String html = "<!DOCTYPE html>"
                 + "<html>"
                 + "<head>"
@@ -129,13 +125,11 @@ public class WebServer extends NanoHTTPD {
                 + "<h1>Panel de Control de Monitoreo</h1>"
                 + "<div class='container'>"
                 
-                // Card Pantalla
                 + "<div class='card'>"
-                + "<h3>Transmisión de Pantalla</h3>"
-                + "<img src='/frame.jpg' id='screenImg' alt='Esperando Pantalla...'>"
+                + "<h3>Transmisión de Pantalla (ADB Daemon)</h3>"
+                + "<img src='/frame.png' id='screenImg' alt='Esperando Daemon ADB...'>"
                 + "</div>"
                 
-                // Card Cámara
                 + "<div class='card'>"
                 + "<h3>Cámara en Vivo</h3>"
                 + "<img src='/camera_frame.jpg' id='cameraImg' alt='Cámara Apagada'>"
@@ -149,9 +143,9 @@ public class WebServer extends NanoHTTPD {
                 + "</div>"
                 + "<script>"
                 + "  setInterval(function() {"
-                + "     document.getElementById('screenImg').src = '/frame.jpg?' + new Date().getTime();"
+                + "     document.getElementById('screenImg').src = '/frame.png?' + new Date().getTime();"
                 + "     document.getElementById('cameraImg').src = '/camera_frame.jpg?' + new Date().getTime();"
-                + "  }, 150);"
+                + "  }, 120);"
                 + "</script>"
                 + "</body>"
                 + "</html>";
