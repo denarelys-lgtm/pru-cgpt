@@ -62,6 +62,7 @@ public class CameraService extends Service {
     // Control Cámara Nativa (Camera2 API en Service)
     private CameraDevice cameraDevice;
     private CameraCaptureSession captureSession;
+    private ImageReader imageReaderCamera; // Variable agregada
     private boolean camaraActiva = false;
     private String selectedCameraId = "0"; // "0" Trasera, "1" Frontal
 
@@ -154,14 +155,12 @@ public class CameraService extends Service {
             }
         }
 
-        // La pantalla tiene un ciclo de vida independiente de Camera2.
         if (mediaProjection != null && screenCaptureController == null) {
             screenCaptureController = new ScreenCaptureController(this, mediaProjection, webServer);
             screenCaptureController.start();
         }
     }
 
-    // Funciones para encender, apagar y cambiar la cámara física
     public synchronized void iniciarCamara() {
         if (camaraActiva) return;
         CameraManager manager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
