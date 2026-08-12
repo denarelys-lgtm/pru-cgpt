@@ -14,6 +14,7 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
+
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
@@ -39,23 +40,17 @@ public class MainActivity extends AppCompatActivity {
         tvIpAddress = findViewById(R.id.tvIpAddress);
         btnStartServer = findViewById(R.id.btnStartServer);
 
-        String ip = obtenerIpLocal();
-        tvIpAddress.setText("IP: http://" + ip + ":8080");
-
+        tvIpAddress.setText("IP: http://" + obtenerIpLocal() + ":8080");
         btnStartServer.setOnClickListener(v -> gestionarPermisosYArrancar());
     }
 
     private String obtenerIpLocal() {
         WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
-        if (wm != null) {
-            return Formatter.formatIpAddress(wm.getConnectionInfo().getIpAddress());
-        }
+        if (wm != null) return Formatter.formatIpAddress(wm.getConnectionInfo().getIpAddress());
         return "Desconocida";
     }
 
     private void gestionarPermisosYArrancar() {
-        // Esta versión no depende de Device Owner ni de DevicePolicyManager.
-        // Todos los permisos se solicitan mediante el flujo normal de Android.
         if (faltanPermisosRuntime()) {
             solicitarPermisosEstandar();
         } else {
@@ -64,20 +59,22 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private boolean faltanPermisosRuntime() {
-        boolean camara = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED;
-        boolean audio = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED;
+        boolean camara = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+                != PackageManager.PERMISSION_GRANTED;
+        boolean audio = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+                != PackageManager.PERMISSION_GRANTED;
         return camara || audio;
     }
 
     private void solicitarPermisosEstandar() {
         ActivityCompat.requestPermissions(
-            this,
-            new String[]{
-                Manifest.permission.CAMERA,
-                Manifest.permission.RECORD_AUDIO,
-                Manifest.permission.POST_NOTIFICATIONS
-            },
-            REQUEST_CODE_PERMISSIONS
+                this,
+                new String[]{
+                        Manifest.permission.CAMERA,
+                        Manifest.permission.RECORD_AUDIO,
+                        Manifest.permission.POST_NOTIFICATIONS
+                },
+                REQUEST_CODE_PERMISSIONS
         );
     }
 
@@ -85,16 +82,20 @@ public class MainActivity extends AppCompatActivity {
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQUEST_CODE_PERMISSIONS) {
+            if (faltanPermisosRuntime()) {
+                Toast.makeText(this, "Debes conceder los permisos de cámara y audio.", Toast.LENGTH_LONG).show();
+                return;
+            }
             solicitarCapturaPantalla();
         }
     }
 
     private void solicitarCapturaPantalla() {
-        MediaProjectionManager projectionManager = 
+        MediaProjectionManager projectionManager =
                 (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
         if (projectionManager != null) {
             startActivityForResult(
-                    projectionManager.createScreenCaptureIntent(), 
+                    projectionManager.createScreenCaptureIntent(),
                     REQUEST_CODE_SCREEN_CAPTURE
             );
         }
