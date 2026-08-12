@@ -9,20 +9,13 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.graphics.Bitmap;
 import android.graphics.ImageFormat;
-import android.graphics.PixelFormat;
-
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CaptureRequest;
-import android.hardware.display.DisplayManager;
-import android.hardware.display.VirtualDisplay;
 import android.media.Image;
 import android.media.ImageReader;
-import android.media.projection.MediaProjection;
-import android.media.projection.MediaProjectionManager;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Handler;
@@ -38,7 +31,6 @@ import androidx.annotation.NonNull;
 import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Collections;
@@ -49,34 +41,20 @@ public class CameraService extends Service {
     private static final int NOTIFICATION_ID = 1;
     private static final int PUERTO_WEB = 8080;
 
-    private MediaProjection mediaProjection;
-    private ScreenCaptureController screenCaptureController;
-
     private WebServer webServer;
+    private ScreenSocketClient screenSocketClient;
+
     private HandlerThread backgroundThread;
     private Handler backgroundHandler;
 
     private PowerManager.WakeLock wakeLock;
     private WifiManager.WifiLock wifiLock;
 
-    // Control Cámara Nativa (Camera2 API en Service)
     private CameraDevice cameraDevice;
     private CameraCaptureSession captureSession;
-    private ImageReader imageReaderCamera; // Variable agregada
+    private ImageReader imageReaderCamera;
     private boolean camaraActiva = false;
-    private String selectedCameraId = "0"; // "0" Trasera, "1" Frontal
-
-    private final android.content.BroadcastReceiver screenStateReceiver = new android.content.BroadcastReceiver() {
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            if (intent == null || intent.getAction() == null || screenCaptureController == null) return;
-            if (Intent.ACTION_SCREEN_OFF.equals(intent.getAction())) {
-                screenCaptureController.onScreenOff();
-            } else if (Intent.ACTION_SCREEN_ON.equals(intent.getAction())) {
-                screenCaptureController.onScreenOn();
-            }
-        }
-    };
+    private String selectedCameraId = "0";
 
     @Override
     public void onCreate() {
@@ -98,15 +76,6 @@ public class CameraService extends Service {
             wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "DetectCamera::WifiLock");
             wifiLock.acquire();
         }
-
-        android.content.IntentFilter filter = new android.content.IntentFilter();
-        filter.addAction(Intent.ACTION_SCREEN_OFF);
-        filter.addAction(Intent.ACTION_SCREEN_ON);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(screenStateReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
-        } else {
-            registerReceiver(screenStateReceiver, filter);
-        }
     }
 
     @Override
@@ -121,21 +90,10 @@ public class CameraService extends Service {
 
         startForeground(NOTIFICATION_ID, notification);
 
-        if (intent != null && intent.hasExtra("RESULT_CODE") && intent.hasExtra("DATA_INTENT")) {
-            int resultCode = intent.getIntExtra("RESULT_CODE", Activity.RESULT_CANCELED);
-            Intent data = intent.getParcelableExtra("DATA_INTENT");
-            String user = intent.getStringExtra("USER_PARAM");
-            String pass = intent.getStringExtra("PASS_PARAM");
+        String user = intent != null ? intent.getStringExtra("USER_PARAM") : "";
+        String pass = intent != null ? intent.getStringExtra("PASS_PARAM") : "";
 
-            if (resultCode == Activity.RESULT_OK && data != null && mediaProjection == null) {
-                MediaProjectionManager projectionManager =
-                        (MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
-                if (projectionManager != null) {
-                    mediaProjection = projectionManager.getMediaProjection(resultCode, data);
-                    iniciarServidorYCaptura(user, pass);
-                }
-            }
-        }
+        iniciarServidorYCaptura(user, pass);
 
         return START_STICKY;
     }
@@ -155,9 +113,9 @@ public class CameraService extends Service {
             }
         }
 
-        if (mediaProjection != null && screenCaptureController == null) {
-            screenCaptureController = new ScreenCaptureController(this, mediaProjection, webServer);
-            screenCaptureController.start();
+        if (screenSocketClient == null && webServer != null) {
+            screenSocketClient = new ScreenSocketClient(webServer);
+            screenSocketClient.start();
         }
     }
 
@@ -183,7 +141,7 @@ public class CameraService extends Service {
                         }
                     }
                 } catch (Exception e) {
-                    Log.e("CameraService", "Error en frame de cámara", e);
+                    Log.e("CameraService", "Error frame cámara", e);
                 } finally {
                     if (img != null) img.close();
                 }
@@ -211,7 +169,7 @@ public class CameraService extends Service {
 
             camaraActiva = true;
         } catch (Exception e) {
-            Log.e("CameraService", "Error al abrir la cámara: " + e.getMessage(), e);
+            Log.e("CameraService", "Error abriendo cámara: " + e.getMessage(), e);
         }
     }
 
@@ -228,17 +186,15 @@ public class CameraService extends Service {
                     try {
                         captureSession.setRepeatingRequest(builder.build(), null, backgroundHandler);
                     } catch (Exception e) {
-                        Log.e("CameraService", "Error iniciando captura de cámara", e);
+                        Log.e("CameraService", "Error repitiendo request de cámara", e);
                     }
                 }
 
                 @Override
-                public void onConfigureFailed(@NonNull CameraCaptureSession session) {
-                    Log.e("CameraService", "No se pudo configurar la cámara");
-                }
+                public void onConfigureFailed(@NonNull CameraCaptureSession session) {}
             }, backgroundHandler);
         } catch (Exception e) {
-            Log.e("CameraService", "Error creando sesión de cámara", e);
+            Log.e("CameraService", "Error creando sesión cámara", e);
         }
     }
 
@@ -286,23 +242,16 @@ public class CameraService extends Service {
 
     @Override
     public void onDestroy() {
-        try { unregisterReceiver(screenStateReceiver); } catch (Exception ignored) {}
-
         detenerCamara();
 
-        if (screenCaptureController != null) {
-            screenCaptureController.release();
-            screenCaptureController = null;
+        if (screenSocketClient != null) {
+            screenSocketClient.stop();
+            screenSocketClient = null;
         }
 
         if (webServer != null) {
             webServer.stop();
             webServer = null;
-        }
-
-        if (mediaProjection != null) {
-            try { mediaProjection.stop(); } catch (Exception ignored) {}
-            mediaProjection = null;
         }
 
         if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
